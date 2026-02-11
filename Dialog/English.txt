@@ -1,0 +1,5 @@
+# Mod name
+ClearMenu= Clear Menu
+
+# Settings
+ClearMenu_Setting_Enabled= Enable

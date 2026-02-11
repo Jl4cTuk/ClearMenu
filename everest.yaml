@@ -1,0 +1,6 @@
+- Name: ClearMenu
+  Version: 1.0.0
+  DLL: bin/ClearMenu.dll
+  Dependencies:
+  - Name: EverestCore
+    Version: 1.5421.0

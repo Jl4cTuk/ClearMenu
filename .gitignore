@@ -1,0 +1,17 @@
+# Build outputs
+bin/
+obj/
+Source/bin/
+Source/obj/
+*.zip
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Debug symbols
+*.pdb
+*.mdb

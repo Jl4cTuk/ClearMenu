@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using FMOD.Studio;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using Monocle;
@@ -16,20 +17,6 @@ public class ClearMenuModule : EverestModule {
 
     private const string ModOptionsButtonTypeName = "Celeste.Mod.UI.MainMenuModOptionsButton";
     private const string ClimbButtonTypeName = "Celeste.MainMenuClimb";
-
-    private static readonly string[] TargetLabelKeys = {
-        "MENU_CREDITS",
-        "MENU_PICO8",
-        "MENU_OPTIONS",
-        "MENU_EXIT"
-    };
-
-    private static readonly string[] TargetOnConfirmMethods = {
-        "OnCredits",
-        "OnPico8",
-        "OnOptions",
-        "OnExit"
-    };
 
     private static bool loggedMenuButtons;
     private static Action onOptionsAction;
@@ -55,6 +42,46 @@ public class ClearMenuModule : EverestModule {
         Everest.Events.MainMenu.OnCreateButtons -= OnMainMenuCreateButtons;
         IL.Celeste.Overworld.InputEntity.Render -= OnOverworldInputEntityRenderIL;
         On.Celeste.OuiMainMenu.Update -= OnOuiMainMenuUpdate;
+    }
+
+    public override void CreateModMenuSection(TextMenu menu, bool inGame, EventInstance snapshot) {
+        menu.Add(new TextMenu.SubHeader(Dialog.Clean("ClearMenu") + " | v." + Instance.Metadata.VersionString));
+
+        EaseInSubMenu menuItemsSubMenu = new EaseInSubMenu(Dialog.Clean("ClearMenu_Setting_MenuItems"), false);
+        menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HidePico8"), Settings.HidePico8).Change(value => {
+                Settings.HidePico8 = value;
+                RequestMainMenuRebuild();
+            }));
+        menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideOptions"), Settings.HideOptions).Change(value => {
+                Settings.HideOptions = value;
+                RequestMainMenuRebuild();
+            }));
+        menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideModOptions"), Settings.HideModOptions).Change(value => {
+                Settings.HideModOptions = value;
+                RequestMainMenuRebuild();
+            }));
+        menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideCredits"), Settings.HideCredits).Change(value => {
+                Settings.HideCredits = value;
+                RequestMainMenuRebuild();
+            }));
+        menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideExit"), Settings.HideExit).Change(value => {
+                Settings.HideExit = value;
+                RequestMainMenuRebuild();
+            }));
+        menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideButtonTips"), Settings.HideButtonTips).Change(value => {
+                Settings.HideButtonTips = value;
+            }));
+
+        TextMenu.Item enabledToggle = new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_Enabled"), Settings.Enabled).Change(value => {
+            Settings.Enabled = value;
+            menuItemsSubMenu.FadeVisible = value;
+            if (!value) {
+                menuItemsSubMenu.Focused = false;
+            }
+        });
+        menu.Add(enabledToggle);
+        menuItemsSubMenu.FadeVisible = Settings.Enabled;
+        menu.Add(menuItemsSubMenu);
     }
 
     private static void OnOverworldInputEntityRenderIL(ILContext il) {
@@ -88,7 +115,7 @@ public class ClearMenuModule : EverestModule {
         float textScale,
         float wiggle
     ) {
-        if (Settings.Enabled && (button == Input.MenuCancel || button == Input.MenuConfirm)) {
+        if (Settings.Enabled && Settings.HideButtonTips && (button == Input.MenuCancel || button == Input.MenuConfirm)) {
             return;
         }
         ButtonUI.Render(position, text, button, scale, alpha, textScale, wiggle);
@@ -251,37 +278,47 @@ public class ClearMenuModule : EverestModule {
             return false;
         }
 
-        string typeName = button.GetType().FullName ?? "";
-        if (string.Equals(typeName, ModOptionsButtonTypeName, StringComparison.Ordinal)) {
+        if (Settings.HideModOptions && MatchesButtonType(button, ModOptionsButtonTypeName)) {
+            return true;
+        }
+        if (Settings.HideCredits && MatchesMenuButton(menu, button, "OnCredits", "MENU_CREDITS")) {
+            return true;
+        }
+        if (Settings.HidePico8 && MatchesMenuButton(menu, button, "OnPico8", "MENU_PICO8")) {
+            return true;
+        }
+        if (Settings.HideOptions && MatchesMenuButton(menu, button, "OnOptions", "MENU_OPTIONS")) {
+            return true;
+        }
+        if (Settings.HideExit && MatchesMenuButton(menu, button, "OnExit", "MENU_EXIT")) {
             return true;
         }
 
-        if (button.OnConfirm != null && button.OnConfirm.Target == menu) {
-            string methodName = button.OnConfirm.Method.Name;
-            for (int i = 0; i < TargetOnConfirmMethods.Length; i++) {
-                if (string.Equals(methodName, TargetOnConfirmMethods[i], StringComparison.Ordinal)) {
-                    return true;
-                }
-            }
+        return false;
+    }
+
+    private static bool MatchesButtonType(MenuButton button, string targetTypeName) {
+        string typeName = button.GetType().FullName ?? "";
+        return string.Equals(typeName, targetTypeName, StringComparison.Ordinal);
+    }
+
+    private static bool MatchesMenuButton(OuiMainMenu menu, MenuButton button, string methodName, string labelKey) {
+        if (button.OnConfirm != null &&
+            button.OnConfirm.Target == menu &&
+            string.Equals(button.OnConfirm.Method.Name, methodName, StringComparison.Ordinal)) {
+            return true;
         }
 
         string labelName = GetStringProperty(button, "LabelName");
-        if (!string.IsNullOrEmpty(labelName)) {
-            for (int i = 0; i < TargetLabelKeys.Length; i++) {
-                if (labelName.Equals(TargetLabelKeys[i], StringComparison.OrdinalIgnoreCase)) {
-                    return true;
-                }
-            }
+        if (!string.IsNullOrEmpty(labelName) &&
+            labelName.Equals(labelKey, StringComparison.OrdinalIgnoreCase)) {
+            return true;
         }
 
         string label = GetStringField(button, "label");
-        if (!string.IsNullOrEmpty(label)) {
-            for (int i = 0; i < TargetLabelKeys.Length; i++) {
-                string targetText = Dialog.Clean(TargetLabelKeys[i]);
-                if (string.Equals(label, targetText, StringComparison.Ordinal)) {
-                    return true;
-                }
-            }
+        if (!string.IsNullOrEmpty(label) &&
+            string.Equals(label, Dialog.Clean(labelKey), StringComparison.Ordinal)) {
+            return true;
         }
 
         return false;
@@ -425,4 +462,73 @@ public class ClearMenuModule : EverestModule {
         forceSelectFirstButton = true;
     }
 
+}
+
+internal class EaseInSubMenu : TextMenuExt.SubMenu {
+    public bool FadeVisible { get; set; }
+    private float alpha;
+    private float unEasedAlpha;
+    private readonly MTexture icon;
+
+    public EaseInSubMenu(string label, bool enterOnSelect) : base(label, enterOnSelect) {
+        alpha = unEasedAlpha = ClearMenuModule.Settings.Enabled ? 1f : 0f;
+        FadeVisible = Visible = ClearMenuModule.Settings.Enabled;
+        icon = GFX.Gui["downarrow"];
+    }
+
+    public override float Height() => MathHelper.Lerp(-Container.ItemSpacing, base.Height(), alpha);
+
+    public override void Update() {
+        base.Update();
+
+        float targetAlpha = FadeVisible ? 1f : 0f;
+        if (Math.Abs(unEasedAlpha - targetAlpha) > 0.001f) {
+            unEasedAlpha = Calc.Approach(unEasedAlpha, targetAlpha, Engine.RawDeltaTime * 3f);
+            alpha = FadeVisible ? Ease.SineOut(unEasedAlpha) : Ease.SineIn(unEasedAlpha);
+        }
+
+        Visible = alpha != 0f;
+    }
+
+    public override void Render(Vector2 position, bool highlighted) {
+        Vector2 top = new(position.X, position.Y - (Height() / 2f));
+
+        float currentAlpha = Container.Alpha * alpha;
+        Color color = Disabled ? Color.DarkSlateGray : ((highlighted ? Container.HighlightColor : Color.White) * currentAlpha);
+        Color strokeColor = Color.Black * (currentAlpha * currentAlpha * currentAlpha);
+
+        bool unCentered = Container.InnerContent == TextMenu.InnerContentMode.TwoColumn && !AlwaysCenter;
+
+        Vector2 titlePosition = top + (Vector2.UnitY * TitleHeight / 2f) + (unCentered ? Vector2.Zero : new Vector2(Container.Width * 0.5f, 0f));
+        Vector2 justify = unCentered ? new Vector2(0f, 0.5f) : new Vector2(0.5f, 0.5f);
+        Vector2 iconJustify = unCentered
+            ? new Vector2(ActiveFont.Measure(Label).X + icon.Width, 5f)
+            : new Vector2(ActiveFont.Measure(Label).X / 2f + icon.Width, 5f);
+        DrawIcon(titlePosition, iconJustify, true, Items.Count < 1 ? Color.DarkSlateGray : color, alpha);
+        ActiveFont.DrawOutline(Label, titlePosition, justify, Vector2.One, color, 2f, strokeColor);
+
+        if (Focused) {
+            Vector2 menuPosition = new(top.X + ItemIndent, top.Y + TitleHeight + ItemSpacing);
+            RecalculateSize();
+            foreach (TextMenu.Item item in Items) {
+                if (item.Visible) {
+                    float height = item.Height();
+                    Vector2 itemPosition = menuPosition + new Vector2(0f, height * 0.5f + item.SelectWiggler.Value * 8f);
+                    if (itemPosition.Y + height * 0.5f > 0f && itemPosition.Y - height * 0.5f < Engine.Height) {
+                        item.Render(itemPosition, Focused && Current == item);
+                    }
+
+                    menuPosition.Y += height + ItemSpacing;
+                }
+            }
+        }
+    }
+
+    private void DrawIcon(Vector2 position, Vector2 justify, bool outline, Color color, float scale) {
+        if (outline) {
+            icon.DrawOutlineCentered(position + justify, color, scale);
+        } else {
+            icon.DrawCentered(position + justify, color, scale);
+        }
+    }
 }

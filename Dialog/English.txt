@@ -3,3 +3,10 @@ ClearMenu= Clear Menu
 
 # Settings
 ClearMenu_Setting_Enabled= Enable
+ClearMenu_Setting_MenuItems= Menu Items
+ClearMenu_Setting_HidePico8= Hide PICO-8
+ClearMenu_Setting_HideOptions= Hide Options
+ClearMenu_Setting_HideModOptions= Hide Mod Options
+ClearMenu_Setting_HideCredits= Hide Credits
+ClearMenu_Setting_HideExit= Hide Exit
+ClearMenu_Setting_HideButtonTips= Hide Button Tips

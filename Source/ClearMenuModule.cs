@@ -27,6 +27,7 @@ public class ClearMenuModule : EverestModule {
     private static Action onExitAction;
     private static bool forceSelectFirstButton;
     private static string lastLanguageToken;
+    public static bool DebugLoggingEnabled = false;
 
     public ClearMenuModule() {
         Instance = this;
@@ -195,6 +196,8 @@ public class ClearMenuModule : EverestModule {
             return;
         }
 
+        LogCPressDebug(self);
+
         if (forceSelectFirstButton) {
             List<MenuButton> buttons = GetButtons(self);
             if (TrySelectFirstButton(self, buttons)) {
@@ -202,12 +205,12 @@ public class ClearMenuModule : EverestModule {
             }
         }
 
-        if (TryInvokeHotkey(Settings.HotkeyClimb, onClimbAction)) return;
-        if (TryInvokeHotkey(Settings.HotkeyPico8, onPico8Action)) return;
-        if (TryInvokeHotkey(Settings.HotkeyOptions, onOptionsAction)) return;
-        if (TryInvokeHotkey(Settings.HotkeyModOptions, onModOptionsAction)) return;
-        if (TryInvokeHotkey(Settings.HotkeyCredits, onCreditsAction)) return;
-        TryInvokeHotkey(Settings.HotkeyExit, onExitAction);
+        if (TryInvokeHotkey(Settings.HotkeyClimb, onClimbAction, "Climb")) return;
+        if (TryInvokeHotkey(Settings.HotkeyPico8, onPico8Action, "PICO-8")) return;
+        if (TryInvokeHotkey(Settings.HotkeyOptions, onOptionsAction, "Options")) return;
+        if (TryInvokeHotkey(Settings.HotkeyModOptions, onModOptionsAction, "Mod Options")) return;
+        if (TryInvokeHotkey(Settings.HotkeyCredits, onCreditsAction, "Credits")) return;
+        TryInvokeHotkey(Settings.HotkeyExit, onExitAction, "Exit");
     }
 
     private static void CaptureMenuActions(OuiMainMenu menu, List<MenuButton> buttons) {
@@ -271,7 +274,7 @@ public class ClearMenuModule : EverestModule {
                string.Equals(button.OnConfirm.Method.Name, methodName, StringComparison.Ordinal);
     }
 
-    private static bool TryInvokeHotkey(Keys key, Action action) {
+    private static bool TryInvokeHotkey(Keys key, Action action, string actionName) {
         if (action == null || key == Keys.None) {
             return false;
         }
@@ -279,8 +282,43 @@ public class ClearMenuModule : EverestModule {
             return false;
         }
 
+        DebugLog($"Hotkey pressed: key={key}, action={actionName}, targetMethod={action.Method.Name}");
         action.Invoke();
         return true;
+    }
+
+    private static void LogCPressDebug(OuiMainMenu menu) {
+        if (!DebugLoggingEnabled) {
+            return;
+        }
+        if (!MInput.Keyboard.Pressed(Keys.C)) {
+            return;
+        }
+
+        List<MenuButton> buttons = GetButtons(menu);
+        int selectedIndex = GetSelectedIndex(menu);
+
+        DebugLog(
+            $"Key C pressed. selectedIndex={selectedIndex}, buttonsCount={(buttons?.Count ?? 0)}, focused={menu.Focused}, visible={menu.Visible}");
+        DebugLog(
+            $"Hotkey bindings: Climb={Settings.HotkeyClimb}, PICO-8={Settings.HotkeyPico8}, Options={Settings.HotkeyOptions}, ModOptions={Settings.HotkeyModOptions}, Credits={Settings.HotkeyCredits}, Exit={Settings.HotkeyExit}");
+
+        if (buttons == null || buttons.Count == 0) {
+            return;
+        }
+
+        for (int i = 0; i < buttons.Count; i++) {
+            MenuButton button = buttons[i];
+            if (button == null || !button.Selected) {
+                continue;
+            }
+
+            string typeName = button.GetType().FullName ?? "<unknown>";
+            string label = GetStringField(button, "label") ?? "<none>";
+            string onConfirm = button.OnConfirm?.Method?.Name ?? "<none>";
+            DebugLog(
+                $"Selected button on C: index={i}, type={typeName}, label={label}, onConfirm={onConfirm}");
+        }
     }
 
     private static void NormalizeMainMenuSelection(OuiMainMenu menu, bool preferFirst) {
@@ -405,6 +443,9 @@ public class ClearMenuModule : EverestModule {
     }
 
     private static void LogMenuButtonsOnce(List<MenuButton> buttons) {
+        if (!DebugLoggingEnabled) {
+            return;
+        }
         if (loggedMenuButtons) {
             return;
         }
@@ -414,11 +455,11 @@ public class ClearMenuModule : EverestModule {
 
         loggedMenuButtons = true;
 
-        Logger.Info(nameof(ClearMenuModule), "Main menu buttons:");
+        DebugLog("Main menu buttons:");
         for (int i = 0; i < buttons.Count; i++) {
             MenuButton button = buttons[i];
             if (button == null) {
-                Logger.Info(nameof(ClearMenuModule), $"  [{i}] <null>");
+                DebugLog($"  [{i}] <null>");
                 continue;
             }
 
@@ -427,9 +468,16 @@ public class ClearMenuModule : EverestModule {
             string label = GetStringField(button, "label") ?? "<none>";
             string onConfirm = button.OnConfirm?.Method?.Name ?? "<none>";
 
-            Logger.Info(nameof(ClearMenuModule),
+            DebugLog(
                 $"  [{i}] type={typeName} labelName={labelName} label={label} onConfirm={onConfirm}");
         }
+    }
+
+    private static void DebugLog(string message) {
+        if (!DebugLoggingEnabled) {
+            return;
+        }
+        Logger.Info(nameof(ClearMenuModule), message);
     }
 
     private static bool IsTargetButton(OuiMainMenu menu, MenuButton button) {

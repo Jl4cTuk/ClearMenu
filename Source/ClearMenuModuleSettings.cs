@@ -20,16 +20,16 @@ public class ClearMenuModuleSettings : EverestModuleSettings {
         }
     }
 
-    private bool _enabled = true;
+    private bool _enabled = false;
 
     [SettingIgnore]
     public bool HidePico8 { get; set; } = true;
 
     [SettingIgnore]
-    public bool HideOptions { get; set; } = true;
+    public bool HideOptions { get; set; } = false;
 
     [SettingIgnore]
-    public bool HideModOptions { get; set; } = true;
+    public bool HideModOptions { get; set; } = false;
 
     [SettingIgnore]
     public bool HideCredits { get; set; } = true;

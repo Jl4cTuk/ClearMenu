@@ -19,8 +19,12 @@ public class ClearMenuModule : EverestModule {
     private const string ClimbButtonTypeName = "Celeste.MainMenuClimb";
 
     private static bool loggedMenuButtons;
+    private static Action onClimbAction;
+    private static Action onPico8Action;
     private static Action onOptionsAction;
     private static Action onModOptionsAction;
+    private static Action onCreditsAction;
+    private static Action onExitAction;
     private static bool forceSelectFirstButton;
 
     public ClearMenuModule() {
@@ -71,10 +75,19 @@ public class ClearMenuModule : EverestModule {
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideButtonTips"), Settings.HideButtonTips).Change(value => {
                 Settings.HideButtonTips = value;
             }));
+        TextMenu.Item hotkeyConfigButton = new TextMenu.Button(Dialog.Clean("ClearMenu_Setting_HotkeyConfig")).Pressed(() => {
+            menu.Focused = false;
+            ClearMenuHotkeyConfigUi hotkeyConfigUi = new() {
+                OnClose = () => menu.Focused = true
+            };
+            Engine.Scene.Add(hotkeyConfigUi);
+            Engine.Scene.OnEndOfFrame += () => Engine.Scene.Entities.UpdateLists();
+        });
 
         TextMenu.Item enabledToggle = new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_Enabled"), Settings.Enabled).Change(value => {
             Settings.Enabled = value;
             menuItemsSubMenu.FadeVisible = value;
+            hotkeyConfigButton.Visible = value;
             if (!value) {
                 menuItemsSubMenu.Focused = false;
             }
@@ -82,6 +95,8 @@ public class ClearMenuModule : EverestModule {
         menu.Add(enabledToggle);
         menuItemsSubMenu.FadeVisible = Settings.Enabled;
         menu.Add(menuItemsSubMenu);
+        hotkeyConfigButton.Visible = Settings.Enabled;
+        menu.Add(hotkeyConfigButton);
     }
 
     private static void OnOverworldInputEntityRenderIL(ILContext il) {
@@ -155,17 +170,21 @@ public class ClearMenuModule : EverestModule {
             }
         }
 
-        if (MInput.Keyboard.Pressed(Keys.D1)) {
-            onOptionsAction?.Invoke();
-        }
-        if (MInput.Keyboard.Pressed(Keys.D2)) {
-            onModOptionsAction?.Invoke();
-        }
+        if (TryInvokeHotkey(Settings.HotkeyClimb, onClimbAction)) return;
+        if (TryInvokeHotkey(Settings.HotkeyPico8, onPico8Action)) return;
+        if (TryInvokeHotkey(Settings.HotkeyOptions, onOptionsAction)) return;
+        if (TryInvokeHotkey(Settings.HotkeyModOptions, onModOptionsAction)) return;
+        if (TryInvokeHotkey(Settings.HotkeyCredits, onCreditsAction)) return;
+        TryInvokeHotkey(Settings.HotkeyExit, onExitAction);
     }
 
     private static void CaptureMenuActions(OuiMainMenu menu, List<MenuButton> buttons) {
+        onClimbAction = null;
+        onPico8Action = null;
         onOptionsAction = null;
         onModOptionsAction = null;
+        onCreditsAction = null;
+        onExitAction = null;
 
         foreach (MenuButton button in buttons) {
             if (button == null || button.OnConfirm == null) {
@@ -173,21 +192,55 @@ public class ClearMenuModule : EverestModule {
             }
 
             string typeName = button.GetType().FullName ?? "";
+            if (onClimbAction == null &&
+                (string.Equals(typeName, ClimbButtonTypeName, StringComparison.Ordinal) || IsMainMenuHandler(button, menu, "OnBegin"))) {
+                onClimbAction = button.OnConfirm;
+            }
+            if (onPico8Action == null && IsMainMenuHandler(button, menu, "OnPico8")) {
+                onPico8Action = button.OnConfirm;
+            }
             if (onModOptionsAction == null &&
                 string.Equals(typeName, ModOptionsButtonTypeName, StringComparison.Ordinal)) {
                 onModOptionsAction = button.OnConfirm;
             }
 
-            if (onOptionsAction == null &&
-                button.OnConfirm.Target == menu &&
-                string.Equals(button.OnConfirm.Method.Name, "OnOptions", StringComparison.Ordinal)) {
+            if (onOptionsAction == null && IsMainMenuHandler(button, menu, "OnOptions")) {
                 onOptionsAction = button.OnConfirm;
             }
+            if (onCreditsAction == null && IsMainMenuHandler(button, menu, "OnCredits")) {
+                onCreditsAction = button.OnConfirm;
+            }
+            if (onExitAction == null && IsMainMenuHandler(button, menu, "OnExit")) {
+                onExitAction = button.OnConfirm;
+            }
 
-            if (onOptionsAction != null && onModOptionsAction != null) {
+            if (onClimbAction != null &&
+                onPico8Action != null &&
+                onOptionsAction != null &&
+                onModOptionsAction != null &&
+                onCreditsAction != null &&
+                onExitAction != null) {
                 break;
             }
         }
+    }
+
+    private static bool IsMainMenuHandler(MenuButton button, OuiMainMenu menu, string methodName) {
+        return button.OnConfirm != null &&
+               button.OnConfirm.Target == menu &&
+               string.Equals(button.OnConfirm.Method.Name, methodName, StringComparison.Ordinal);
+    }
+
+    private static bool TryInvokeHotkey(Keys key, Action action) {
+        if (action == null || key == Keys.None) {
+            return false;
+        }
+        if (!MInput.Keyboard.Pressed(key)) {
+            return false;
+        }
+
+        action.Invoke();
+        return true;
     }
 
     private static void RemoveTargetButtons(OuiMainMenu menu, List<MenuButton> buttons) {

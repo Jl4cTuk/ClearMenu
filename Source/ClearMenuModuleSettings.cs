@@ -1,4 +1,5 @@
 using Celeste.Mod;
+using Microsoft.Xna.Framework.Input;
 
 namespace Celeste.Mod.ClearMenu;
 
@@ -38,4 +39,22 @@ public class ClearMenuModuleSettings : EverestModuleSettings {
 
     [SettingIgnore]
     public bool HideButtonTips { get; set; } = true;
+
+    [SettingIgnore]
+    public Keys HotkeyClimb { get; set; } = Keys.None;
+
+    [SettingIgnore]
+    public Keys HotkeyPico8 { get; set; } = Keys.None;
+
+    [SettingIgnore]
+    public Keys HotkeyOptions { get; set; } = Keys.D1;
+
+    [SettingIgnore]
+    public Keys HotkeyModOptions { get; set; } = Keys.D2;
+
+    [SettingIgnore]
+    public Keys HotkeyCredits { get; set; } = Keys.None;
+
+    [SettingIgnore]
+    public Keys HotkeyExit { get; set; } = Keys.None;
 }

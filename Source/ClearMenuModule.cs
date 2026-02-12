@@ -26,6 +26,7 @@ public class ClearMenuModule : EverestModule {
     private static Action onCreditsAction;
     private static Action onExitAction;
     private static bool forceSelectFirstButton;
+    private static string lastLanguageToken;
 
     public ClearMenuModule() {
         Instance = this;
@@ -40,12 +41,14 @@ public class ClearMenuModule : EverestModule {
         Everest.Events.MainMenu.OnCreateButtons += OnMainMenuCreateButtons;
         IL.Celeste.Overworld.InputEntity.Render += OnOverworldInputEntityRenderIL;
         On.Celeste.OuiMainMenu.Update += OnOuiMainMenuUpdate;
+        On.Celeste.Settings.Reload += OnSettingsReload;
     }
 
     public override void Unload() {
         Everest.Events.MainMenu.OnCreateButtons -= OnMainMenuCreateButtons;
         IL.Celeste.Overworld.InputEntity.Render -= OnOverworldInputEntityRenderIL;
         On.Celeste.OuiMainMenu.Update -= OnOuiMainMenuUpdate;
+        On.Celeste.Settings.Reload -= OnSettingsReload;
     }
 
     public override void CreateModMenuSection(TextMenu menu, bool inGame, EventInstance snapshot) {
@@ -54,22 +57,37 @@ public class ClearMenuModule : EverestModule {
         EaseInSubMenu menuItemsSubMenu = new EaseInSubMenu(Dialog.Clean("ClearMenu_Setting_MenuItems"), false);
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HidePico8"), Settings.HidePico8).Change(value => {
                 Settings.HidePico8 = value;
+                if (value) {
+                    RequestSelectFirstButton();
+                }
                 RequestMainMenuRebuild();
             }));
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideOptions"), Settings.HideOptions).Change(value => {
                 Settings.HideOptions = value;
+                if (value) {
+                    RequestSelectFirstButton();
+                }
                 RequestMainMenuRebuild();
             }));
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideModOptions"), Settings.HideModOptions).Change(value => {
                 Settings.HideModOptions = value;
+                if (value) {
+                    RequestSelectFirstButton();
+                }
                 RequestMainMenuRebuild();
             }));
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideCredits"), Settings.HideCredits).Change(value => {
                 Settings.HideCredits = value;
+                if (value) {
+                    RequestSelectFirstButton();
+                }
                 RequestMainMenuRebuild();
             }));
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideExit"), Settings.HideExit).Change(value => {
                 Settings.HideExit = value;
+                if (value) {
+                    RequestSelectFirstButton();
+                }
                 RequestMainMenuRebuild();
             }));
         menuItemsSubMenu.Add(new TextMenu.OnOff(Dialog.Clean("ClearMenu_Setting_HideButtonTips"), Settings.HideButtonTips).Change(value => {
@@ -154,7 +172,21 @@ public class ClearMenuModule : EverestModule {
     }
 
     private static void OnOuiMainMenuUpdate(On.Celeste.OuiMainMenu.orig_Update orig, OuiMainMenu self) {
+        NormalizeMainMenuSelection(self, preferFirst: forceSelectFirstButton);
         orig(self);
+        NormalizeMainMenuSelection(self, preferFirst: forceSelectFirstButton);
+
+        string languageToken = GetLanguageToken();
+        if (lastLanguageToken == null) {
+            lastLanguageToken = languageToken;
+        } else if (!string.Equals(lastLanguageToken, languageToken, StringComparison.Ordinal)) {
+            lastLanguageToken = languageToken;
+            if (Settings.Enabled) {
+                forceSelectFirstButton = true;
+            }
+            self.NeedsRebuild();
+            return;
+        }
 
         if (!self.Focused) {
             return;
@@ -225,6 +257,14 @@ public class ClearMenuModule : EverestModule {
         }
     }
 
+    private static void OnSettingsReload(On.Celeste.Settings.orig_Reload orig) {
+        orig();
+        if (Settings.Enabled) {
+            RequestSelectFirstButton();
+        }
+        RequestMainMenuRebuild();
+    }
+
     private static bool IsMainMenuHandler(MenuButton button, OuiMainMenu menu, string methodName) {
         return button.OnConfirm != null &&
                button.OnConfirm.Target == menu &&
@@ -241,6 +281,71 @@ public class ClearMenuModule : EverestModule {
 
         action.Invoke();
         return true;
+    }
+
+    private static void NormalizeMainMenuSelection(OuiMainMenu menu, bool preferFirst) {
+        List<MenuButton> buttons = GetButtons(menu);
+        if (buttons == null || buttons.Count == 0) {
+            return;
+        }
+
+        int selectedIndex = GetSelectedIndex(menu);
+        int selectedCount = 0;
+        int firstSelectedIndex = -1;
+        int firstValidIndex = -1;
+        int climbIndex = -1;
+
+        for (int i = 0; i < buttons.Count; i++) {
+            MenuButton b = buttons[i];
+            if (b == null) {
+                continue;
+            }
+
+            if (firstValidIndex == -1) {
+                firstValidIndex = i;
+            }
+            if (climbIndex == -1 && string.Equals(b.GetType().FullName, ClimbButtonTypeName, StringComparison.Ordinal)) {
+                climbIndex = i;
+            }
+            if (b.Selected) {
+                selectedCount++;
+                if (firstSelectedIndex == -1) {
+                    firstSelectedIndex = i;
+                }
+            }
+        }
+
+        int targetIndex;
+        if (firstValidIndex == -1) {
+            return;
+        } else if (preferFirst || forceSelectFirstButton) {
+            targetIndex = firstValidIndex;
+        } else if (selectedCount == 1 && firstSelectedIndex >= 0) {
+            targetIndex = firstSelectedIndex;
+        } else if (selectedIndex >= 0 && selectedIndex < buttons.Count && buttons[selectedIndex] != null) {
+            targetIndex = selectedIndex;
+        } else if (climbIndex >= 0) {
+            targetIndex = climbIndex;
+        } else {
+            targetIndex = firstValidIndex;
+        }
+
+        MenuButton target = buttons[targetIndex];
+        if (menu.Scene == null || target.Scene == null) {
+            SetSelectedIndex(menu, targetIndex);
+            forceSelectFirstButton = true;
+            return;
+        }
+
+        bool alreadySingleTarget = selectedCount == 1 && firstSelectedIndex == targetIndex;
+        if (!alreadySingleTarget) {
+            MenuButton.ClearSelection(menu.Scene);
+            target.Selected = true;
+        }
+        SetSelectedIndex(menu, targetIndex);
+        if (preferFirst && targetIndex == firstValidIndex) {
+            forceSelectFirstButton = false;
+        }
     }
 
     private static void RemoveTargetButtons(OuiMainMenu menu, List<MenuButton> buttons) {
@@ -277,6 +382,7 @@ public class ClearMenuModule : EverestModule {
 
         if (removed && (selectionRemoved || selectedIndex < 0 || selectedIndex >= buttons.Count)) {
             EnsureSelection(menu, buttons);
+            forceSelectFirstButton = true;
         }
     }
 
@@ -429,6 +535,11 @@ public class ClearMenuModule : EverestModule {
         }
         if (targetIndex != -1) {
             MenuButton target = buttons[targetIndex];
+            if (menu.Scene == null || target.Scene == null) {
+                SetSelectedIndex(menu, targetIndex);
+                forceSelectFirstButton = true;
+                return;
+            }
             MenuButton.ClearSelection(menu.Scene);
             target.Selected = true;
             SetSelectedIndex(menu, targetIndex);
@@ -513,6 +624,27 @@ public class ClearMenuModule : EverestModule {
 
     internal static void RequestSelectFirstButton() {
         forceSelectFirstButton = true;
+    }
+
+    private static string GetLanguageToken() {
+        try {
+            PropertyInfo property = typeof(Dialog).GetProperty("Language", BindingFlags.Public | BindingFlags.Static);
+            object value = property?.GetValue(null);
+            if (value != null) {
+                return value.ToString();
+            }
+        } catch {
+            // fallback below
+        }
+
+        try {
+            Type settingsType = typeof(Celeste).Assembly.GetType("Celeste.Settings");
+            object settings = settingsType?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+            object lang = settings?.GetType().GetProperty("Language", BindingFlags.Public | BindingFlags.Instance)?.GetValue(settings);
+            return lang?.ToString() ?? string.Empty;
+        } catch {
+            return string.Empty;
+        }
     }
 
 }
